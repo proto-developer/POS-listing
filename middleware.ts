@@ -1,14 +1,21 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { COOKIE, verifySession } from "@/lib/auth";
-import { clientIp, rateLimit } from "@/lib/request";
+/**
+ * Every request passes through here (see `config.matcher`): cross-site write
+ * protection, body-size cap, rate limits, the login wall, and a per-request
+ * Content-Security-Policy nonce. Edge runtime: only edge-safe modules are imported.
+ */
 
-// Every request passes through here (see `config.matcher`): cross-site write protection,
-// body-size cap, rate limits, the login wall, and a per-request Content-Security-Policy nonce.
+import { NextResponse, type NextRequest } from "next/server";
+import { COOKIE, verifySession } from "@/server/auth/session";
+import { env } from "@/server/env";
+import { clientIp, rateLimit } from "@/server/rate-limit";
 
 const PUBLIC = ["/login", "/api/auth/login"];
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const MAX_BODY = 2 * 1024 * 1024; // 2 MB — history records are a few KB, items a few hundred bytes
-const DEV = process.env.NODE_ENV !== "production";
+const LIMITS = {
+  login: { limit: 10, windowMs: 15 * 60_000 },
+  api: { limit: 300, windowMs: 60_000 },
+};
 
 const deny = (status: number, error: string, headers?: Record<string, string>) =>
   NextResponse.json({ ok: false, error }, { status, headers });
@@ -23,20 +30,21 @@ function hostOf(origin: string) {
 
 /** Build the CSP with a fresh nonce; Next.js reads it from the request headers and tags its own scripts. */
 function withCsp(req: NextRequest) {
+  const dev = !env.isProduction;
   const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
   const csp = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${DEV ? " 'unsafe-eval'" : ""}`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'", // Radix, Recharts and Vaul set inline style attributes
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    `connect-src 'self'${DEV ? " ws: wss:" : ""}`, // dev: hot reload socket
+    `connect-src 'self'${dev ? " ws: wss:" : ""}`, // dev: hot reload socket
     "worker-src 'self' blob:",
     "frame-ancestors 'none'",
     "form-action 'self'",
     "base-uri 'self'",
     "object-src 'none'",
-    ...(DEV ? [] : ["upgrade-insecure-requests"]),
+    ...(dev ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
 
   const headers = new Headers(req.headers);
@@ -64,10 +72,10 @@ export async function middleware(req: NextRequest) {
   // 2. Rate limits
   const ip = clientIp(req.headers);
   if (pathname === "/api/auth/login" && req.method === "POST") {
-    const r = rateLimit(`login:${ip}`, 10, 15 * 60_000);
+    const r = rateLimit(`login:${ip}`, LIMITS.login.limit, LIMITS.login.windowMs);
     if (!r.ok) return deny(429, "Too many sign-in attempts. Try again later.", { "Retry-After": String(r.retryAfter) });
   } else if (isApi) {
-    const r = rateLimit(`api:${ip}`, 300, 60_000);
+    const r = rateLimit(`api:${ip}`, LIMITS.api.limit, LIMITS.api.windowMs);
     if (!r.ok) return deny(429, "Too many requests", { "Retry-After": String(r.retryAfter) });
   }
 

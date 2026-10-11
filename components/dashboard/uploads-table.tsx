@@ -1,13 +1,13 @@
 "use client";
 
-// The list of uploaded files under the two widgets. Fills its row and scrolls
-// inside. Click a row for its details.
+/** The list of uploaded files under the two widgets. Fills its row and scrolls inside. Click a row for its details. */
 
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { money, num, UploadDrawer, when } from "@/components/uploads";
+import { UploadDrawer } from "@/components/uploads/upload-drawer";
+import { money, num, plural, when } from "@/lib/format";
 import type { Upload } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +18,7 @@ export function UploadsTable({ history, currency }: { history: Upload[]; currenc
     <Card className="flex h-full min-h-0 flex-col gap-0 overflow-hidden rounded-xl py-0 shadow-none">
       <div className="flex items-baseline justify-between border-b px-4 py-3 sm:px-5">
         <h2 className="text-sm font-medium">Uploaded files</h2>
-        <span className="text-xs text-muted-foreground">{num(history.length)} {history.length === 1 ? "upload" : "uploads"} · click a row for details</span>
+        <span className="text-xs text-muted-foreground">{plural(history.length, "upload")} · click a row for details</span>
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <Table className="text-sm">

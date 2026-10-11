@@ -80,6 +80,12 @@ Deployment notes: put the app behind HTTPS; give the MongoDB user access to the 
 only and restrict Atlas network access to your server's IP; rotate `SQUARE_ACCESS_TOKEN`,
 `MONGODB_URI` and `LISTER_SECRET` if they are ever shared or pasted anywhere.
 
+## Code layout
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full map. In short:
+`app/` routes · `components/` UI (shadcn in `ui/`) · `hooks/` React state · `lib/` pure, browser-safe
+logic · `server/` server-only business logic (env, auth, database, Square) · `middleware.ts` the
+request gate. Nothing outside `server/env.ts` reads `process.env`.
+
 ## API (all require the login cookie)
 - `GET  /api/health`            database + Square connection status
 - `GET  /api/push`              Square connection status · `POST` one item to list it on Square

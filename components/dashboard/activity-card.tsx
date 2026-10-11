@@ -1,35 +1,36 @@
 "use client";
 
-// Widget 2: one bar per weekday for the last 7 days. Click a bar to pick that
-// day, choose one of the files uploaded that day, then "View full report"
-// opens its details.
+/**
+ * Widget 2: one bar per weekday for the last 7 days. Click a bar to pick that
+ * day, choose one of the files uploaded that day, then "View full report" opens its details.
+ */
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { num, UploadDrawer } from "@/components/uploads";
+import { UploadDrawer } from "@/components/uploads/upload-drawer";
+import { num, plural } from "@/lib/format";
+import { DAY_MS, dayKey } from "@/lib/stats";
 import type { Upload } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const DAY = 86_400_000;
 const DAYS = 7;
-const dayKey = (d: Date) => new Date(d).setHours(0, 0, 0, 0);
 
 export function ActivityCard({ history, currency }: { history: Upload[]; currency: string }) {
   const today = dayKey(new Date());
   const [day, setDay] = useState(today);
-  const [fileId, setFileId] = useState<string>("");
+  const [fileId, setFileId] = useState("");
   const [viewing, setViewing] = useState<Upload | null>(null);
 
   const days = Array.from({ length: DAYS }, (_, i) => {
-    const t = today - (DAYS - 1 - i) * DAY;
-    const list = history.filter((u) => dayKey(new Date(u.at)) === t);
+    const t = today - (DAYS - 1 - i) * DAY_MS;
+    const uploads = history.filter((u) => dayKey(u.at) === t);
     return {
       t,
       label: new Date(t).toLocaleDateString(undefined, { weekday: "short" }),
-      uploads: list,
-      items: list.reduce((n, u) => n + u.created, 0),
+      uploads,
+      items: uploads.reduce((n, u) => n + u.created, 0),
     };
   });
   const max = Math.max(1, ...days.map((d) => d.items));
@@ -60,7 +61,7 @@ export function ActivityCard({ history, currency }: { history: Upload[]; currenc
                 onClick={() => setDay(d.t)}
                 aria-pressed={active}
                 aria-label={`${d.label}: ${d.items} items added in ${d.uploads.length} uploads`}
-                title={`${num(d.items)} items added · ${num(d.uploads.length)} ${d.uploads.length === 1 ? "upload" : "uploads"}`}
+                title={`${num(d.items)} items added · ${plural(d.uploads.length, "upload")}`}
                 className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-2 self-stretch outline-none"
               >
                 <span

@@ -1,17 +1,18 @@
+/**
+ * Password checking (Node only). Prefers LISTER_PASSWORD_HASH (scrypt, made with
+ * `npm run hash-password`); LISTER_PASSWORD (plain text) is accepted for a first setup.
+ *
+ * Hash format: scrypt:<salt hex>:<hash hex>. Colons, not "$", because .env files expand "$VAR".
+ */
+
 import "server-only";
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
-import { authConfigured, safeEqual, userName } from "./auth";
-
-// Password checking (Node only). Prefer LISTER_PASSWORD_HASH (scrypt, made with `npm run hash-password`);
-// LISTER_PASSWORD (plain text) is accepted so a first setup is easy, but the hash is what to keep.
-
-const HASH = process.env.LISTER_PASSWORD_HASH?.trim() ?? "";
-const PLAIN = process.env.LISTER_PASSWORD?.trim() ?? "";
+import { env } from "@/server/env";
+import { authConfigured, safeEqual, userName } from "./session";
 
 const SCRYPT = { N: 16384, r: 8, p: 1 };
 const KEY_LEN = 64;
 
-// Format: scrypt:<salt hex>:<hash hex>. Colons, not "$", because .env files expand "$VAR".
 export function hashPassword(password: string): string {
   const salt = randomBytes(16);
   const hash = scryptSync(password, salt, KEY_LEN, SCRYPT);
@@ -30,6 +31,6 @@ export function verifyPassword(password: string, stored: string): boolean {
 export function checkCredentials(username: string, password: string): boolean {
   if (!authConfigured) return false;
   const userOk = safeEqual(username.trim(), userName);
-  const passOk = HASH ? verifyPassword(password, HASH) : safeEqual(password, PLAIN);
+  const passOk = env.auth.passwordHash ? verifyPassword(password, env.auth.passwordHash) : safeEqual(password, env.auth.password);
   return userOk && passOk;
 }

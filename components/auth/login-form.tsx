@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { safeNext } from "@/lib/request";
-import { cn } from "@/lib/utils";
+import { api, errorMessage } from "@/lib/api-client";
+import { cn, safeNext } from "@/lib/utils";
 
+/** `setupMessage` is set by the server when sign-in isn't configured yet; the form is then disabled. */
 export function LoginForm({ setupMessage, className, ...props }: React.ComponentProps<"div"> & { setupMessage?: string }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -23,20 +24,11 @@ export function LoginForm({ setupMessage, className, ...props }: React.Component
     setBusy(true);
     setError("");
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(data.error || "Couldn't sign in");
-        return;
-      }
+      await api("/api/auth/login", { body: { username, password } });
       router.replace(safeNext(params.get("next")));
       router.refresh();
-    } catch {
-      setError("Network error. Check your connection.");
+    } catch (e) {
+      setError(errorMessage(e, "Couldn't sign in"));
     } finally {
       setBusy(false);
     }
@@ -60,14 +52,7 @@ export function LoginForm({ setupMessage, className, ...props }: React.Component
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="username">Username</FieldLabel>
-                <Input
-                  id="username"
-                  autoComplete="username"
-                  autoFocus
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
+                <Input id="username" autoComplete="username" autoFocus required value={username} onChange={(e) => setUsername(e.target.value)} />
               </Field>
               <Field data-invalid={!!error || undefined}>
                 <FieldLabel htmlFor="password">Password</FieldLabel>
@@ -87,9 +72,7 @@ export function LoginForm({ setupMessage, className, ...props }: React.Component
                   {busy && <Loader2 className="animate-spin" />}
                   {busy ? "Signing in…" : "Sign in"}
                 </Button>
-                {setupMessage && (
-                  <FieldDescription className="text-center text-warning">{setupMessage}</FieldDescription>
-                )}
+                {setupMessage && <FieldDescription className="text-center text-warning">{setupMessage}</FieldDescription>}
               </Field>
             </FieldGroup>
           </form>

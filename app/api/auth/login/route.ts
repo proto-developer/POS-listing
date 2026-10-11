@@ -1,20 +1,22 @@
-import { NextResponse } from "next/server";
-import { AUTH_SETUP_MESSAGE, authConfigured, COOKIE, cookieOptions, createSession } from "@/lib/auth";
-import { checkCredentials } from "@/lib/credentials";
+import { AUTH_SETUP_MESSAGE, authConfigured, COOKIE, cookieOptions, createSession } from "@/server/auth/session";
+import { checkCredentials } from "@/server/auth/credentials";
+import { ApiError, handler, json, readJson } from "@/server/http";
+import { isObject, str } from "@/server/validate";
 
-export async function POST(req: Request) {
-  if (!authConfigured) return NextResponse.json({ ok: false, error: AUTH_SETUP_MESSAGE }, { status: 503 });
+/** POST { username, password } → sets the session cookie. */
+export const POST = handler(async (req) => {
+  if (!authConfigured) throw new ApiError(503, AUTH_SETUP_MESSAGE);
 
-  const body = await req.json().catch(() => null);
-  const username = typeof body?.username === "string" ? body.username.slice(0, 100) : "";
-  const password = typeof body?.password === "string" ? body.password.slice(0, 200) : "";
+  const body = await readJson(req);
+  const username = isObject(body) ? str(body.username, 100) : "";
+  const password = isObject(body) && typeof body.password === "string" ? body.password.slice(0, 200) : "";
 
   if (!username || !password || !checkCredentials(username, password)) {
     await new Promise((r) => setTimeout(r, 400 + Math.random() * 200)); // slow down guessing
-    return NextResponse.json({ ok: false, error: "Wrong username or password" }, { status: 401 });
+    throw new ApiError(401, "Wrong username or password");
   }
 
-  const res = NextResponse.json({ ok: true });
+  const res = json({ ok: true });
   res.cookies.set(COOKIE, await createSession(), cookieOptions);
   return res;
-}
+});

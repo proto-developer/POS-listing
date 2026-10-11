@@ -1,12 +1,16 @@
+/**
+ * MongoDB connection, shared across requests and hot reloads, plus the
+ * collection schema the database itself enforces.
+ */
+
 import "server-only";
 import { MongoClient, type Db } from "mongodb";
+import type { DbStatus } from "@/lib/types";
+import { env, SETUP } from "@/server/env";
 
-// MongoDB connection, shared across requests and hot reloads. MONGODB_URI is required.
-
-const uri = process.env.MONGODB_URI?.trim();
-const dbName = process.env.MONGODB_DB?.trim() || "lister";
-
-export const dbConfigured = !!uri;
+export const COLLECTIONS = {
+  uploads: "uploads", // one document per manifest upload: the stats shown on the dashboard
+} as const;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -14,22 +18,17 @@ declare global {
 }
 
 export async function getDb(): Promise<Db> {
-  if (!uri) throw new Error("MONGODB_URI is not set in .env.local");
-  globalThis.__listerMongo ??= new MongoClient(uri, { serverSelectionTimeoutMS: 5000 })
+  if (!env.mongo.configured) throw new Error(SETUP.mongo);
+  globalThis.__listerMongo ??= new MongoClient(env.mongo.uri, { serverSelectionTimeoutMS: 5000 })
     .connect()
     .catch((e) => {
       globalThis.__listerMongo = undefined; // let the next request retry
       throw e;
     });
-  return (await globalThis.__listerMongo).db(dbName);
+  return (await globalThis.__listerMongo).db(env.mongo.dbName);
 }
 
-/** Collection names in one place. */
-export const COLLECTIONS = {
-  uploads: "uploads", // one document per manifest upload: the stats shown on the dashboard
-} as const;
-
-/** Shape the database itself enforces for an upload record, so nothing else can write junk into it. */
+/** Shape the database enforces for an upload record, so nothing else can write junk into it. */
 const uploadSchema = {
   bsonType: "object",
   required: ["id", "file", "at", "mode", "seconds", "total", "created", "exists", "value", "skipped"],
@@ -63,42 +62,42 @@ const uploadSchema = {
   },
 };
 
-let indexed: Promise<void> | null = null;
+let prepared: Promise<void> | null = null;
 /** Create the collection, its validator and indexes once per process. */
-export function ensureIndexes() {
-  indexed ??= (async () => {
+export function prepareDb() {
+  prepared ??= (async () => {
     const db = await getDb();
     const exists = (await db.listCollections({ name: COLLECTIONS.uploads }, { nameOnly: true }).toArray()).length > 0;
     try {
-      if (exists) await db.command({ collMod: COLLECTIONS.uploads, validator: { $jsonSchema: uploadSchema }, validationLevel: "strict" });
-      else await db.createCollection(COLLECTIONS.uploads, { validator: { $jsonSchema: uploadSchema }, validationLevel: "strict" });
-    } catch (e: any) {
+      const options = { validator: { $jsonSchema: uploadSchema }, validationLevel: "strict" as const };
+      if (exists) await db.command({ collMod: COLLECTIONS.uploads, ...options });
+      else await db.createCollection(COLLECTIONS.uploads, options);
+    } catch (e) {
       // A read/write-only database user can't change validators; the API still validates everything itself.
-      console.warn("[db] could not apply the uploads schema:", e?.message);
+      console.warn("[db] could not apply the uploads schema:", e instanceof Error ? e.message : e);
     }
     const uploads = db.collection(COLLECTIONS.uploads);
     await uploads.createIndex({ id: 1 }, { unique: true });
     await uploads.createIndex({ at: -1 });
   })().catch((e) => {
-    indexed = null;
+    prepared = null;
     throw e;
   });
-  return indexed;
+  return prepared;
 }
-
-export type DbStatus = { ok: boolean; db: string; error?: string };
 
 /** Can we reach the database? Cached for a minute so pages stay fast. */
 let statusCache: { at: number; value: DbStatus } | null = null;
 export async function dbStatus(): Promise<DbStatus> {
-  if (!uri) return { ok: false, db: dbName, error: "MONGODB_URI is not set in .env.local" };
+  const db = env.mongo.dbName;
+  if (!env.mongo.configured) return { ok: false, db, error: SETUP.mongo };
   if (statusCache && Date.now() - statusCache.at < 60_000) return statusCache.value;
   let value: DbStatus;
   try {
     await (await getDb()).command({ ping: 1 });
-    value = { ok: true, db: dbName };
-  } catch (e: any) {
-    value = { ok: false, db: dbName, error: e?.message ?? "Cannot connect" };
+    value = { ok: true, db };
+  } catch (e) {
+    value = { ok: false, db, error: e instanceof Error ? e.message : "Cannot connect" };
   }
   statusCache = { at: Date.now(), value };
   return value;

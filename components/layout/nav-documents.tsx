@@ -1,16 +1,17 @@
 "use client";
 
+/** Recent files in the sidebar. Click one to open its details drawer. */
+
 import { useState } from "react";
 import Link from "next/link";
 import { IconDots, IconFileSpreadsheet } from "@tabler/icons-react";
-
 import {
   SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { UploadDrawer, when } from "@/components/uploads";
+import { UploadDrawer } from "@/components/uploads/upload-drawer";
+import { when } from "@/lib/format";
 import type { Upload } from "@/lib/types";
 
-/** Recent files in the sidebar. Click one to open its details drawer. */
 export function NavDocuments({ items, currency }: { items: Upload[]; currency: string }) {
   const [viewing, setViewing] = useState<Upload | null>(null);
 

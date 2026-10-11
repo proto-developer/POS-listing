@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
-import { userName } from "@/lib/auth";
-import { dbStatus } from "@/lib/db";
-import { status as squareStatus } from "@/lib/square";
+import { userName } from "@/server/auth/session";
+import { dbStatus } from "@/server/db/client";
+import { handler, json } from "@/server/http";
+import { squareStatus } from "@/server/square/status";
 
-/** One call to see whether the database and Square are reachable with the configured credentials. */
-export async function GET() {
+/** GET → whether the database and Square are reachable with the configured credentials. 503 if either isn't. */
+export const GET = handler(async () => {
   const [db, square] = await Promise.all([dbStatus(), squareStatus()]);
-  return NextResponse.json({ ok: db.ok && square.ok, user: userName, db, square }, { status: db.ok && square.ok ? 200 : 503 });
-}
+  const ok = db.ok && square.ok;
+  return json({ ok, user: userName, db, square }, { status: ok ? 200 : 503 });
+});

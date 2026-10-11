@@ -1,3 +1,11 @@
+/**
+ * Domain types shared by the browser and the server.
+ * Nothing in here touches the network, the database or process.env.
+ */
+
+/* ---------- Manifest rows ---------- */
+
+/** One row of the manifest, as read from the sheet. */
 export type Item = {
   row: number;
   name: string;
@@ -11,15 +19,10 @@ export type Item = {
   url: string;
 };
 
+/** The fields Square cannot do without. */
 export type Field = "name" | "sku" | "price";
-
 export const REQUIRED: Field[] = ["name", "sku", "price"];
-
-export const FIELD_LABEL: Record<Field, string> = {
-  name: "Item name",
-  sku: "SKU",
-  price: "Price",
-};
+export const FIELD_LABEL: Record<Field, string> = { name: "Item name", sku: "SKU", price: "Price" };
 
 export function missingFields(item: Item): Field[] {
   return REQUIRED.filter((f) => {
@@ -29,10 +32,35 @@ export function missingFields(item: Item): Field[] {
   });
 }
 
+/** Short, clean display name: "Frigidaire FDSH4501AS" instead of the full description. */
+export function shortName(it: Pick<Item, "brand" | "model" | "name">) {
+  const s = [it.brand, it.model].filter(Boolean).join(" ");
+  return s || it.name;
+}
+
+/* ---------- Posting to Square ---------- */
+
 export type PushResult =
   | { ok: true; status: "created" | "exists"; id?: string }
   | { ok: false; error: string; fields?: Field[] };
 
+export type SquareMode = "sandbox" | "live";
+
+/** Whether the configured token and location work, with what we learned about them. */
+export type SquareStatus = {
+  mode: SquareMode;
+  ok: boolean;
+  /** Location name, e.g. "Main Store" */
+  location?: string;
+  currency?: string;
+  error?: string;
+};
+
+/* ---------- Upload history ---------- */
+
+export type SkippedRow = { row?: number; sku: string; name: string; reason: string };
+
+/** The stats of one manifest upload. This is what the database stores; never the sheet itself. */
 export type Upload = {
   id: string;
   file: string;
@@ -41,14 +69,27 @@ export type Upload = {
   total: number;
   created: number;
   exists: number;
-  skipped: { row?: number; sku: string; name: string; reason: string }[];
+  skipped: SkippedRow[];
   value: number; // sum of prices listed
-  mode: string;
+  mode: SquareMode | string;
   user?: string; // who ran the upload
 };
 
-/** Short, clean display name: "Frigidaire FDSH4501AS" instead of the full description */
-export function shortName(it: Pick<Item, "brand" | "model" | "name">) {
-  const s = [it.brand, it.model].filter(Boolean).join(" ");
-  return s || it.name;
-}
+export type DbStatus = { ok: boolean; db: string; error?: string };
+
+/* ---------- API responses ---------- */
+
+export type ApiFailure = { ok: false; error: string };
+
+/* ---------- Inline toast feed ---------- */
+
+export type FeedType = "loading" | "success" | "info" | "warning" | "error" | "default";
+
+export type FeedToast = {
+  id: string;
+  type: FeedType;
+  title: string;
+  description?: string;
+  /** ms before it fades out; omitted keeps it until replaced or dismissed */
+  duration?: number;
+};

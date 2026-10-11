@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconChartBar, IconCirclePlusFilled, type Icon } from "@tabler/icons-react";
-
 import { Button } from "@/components/ui/button";
 import {
   SidebarGroup, SidebarGroupContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem,

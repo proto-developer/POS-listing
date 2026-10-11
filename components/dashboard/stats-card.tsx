@@ -1,36 +1,32 @@
 "use client";
 
-// Widget 1: this month's items added, the Square mode, a breakdown panel and
-// an all-time footnote, so every stat lives in one quiet place.
+/** Widget 1: this month's items added, the Square connection, a breakdown panel and an all-time footnote. */
 
 import { Card } from "@/components/ui/card";
-import { money, num } from "@/components/uploads";
-import type { SquareStatus } from "@/lib/square";
-import type { Upload } from "@/lib/types";
+import { money, num, plural } from "@/lib/format";
+import { inMonth, sumBy } from "@/lib/stats";
+import type { SquareStatus, Upload } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const sum = (list: Upload[], pick: (u: Upload) => number) => list.reduce((n, u) => n + pick(u), 0);
+function connection(square: SquareStatus) {
+  if (!square.ok) return { label: "Square not connected", dot: "bg-destructive" };
+  const where = square.location ? ` · ${square.location}` : "";
+  return square.mode === "sandbox" ? { label: `Square sandbox${where}`, dot: "bg-warning" } : { label: `Square live${where}`, dot: "bg-success" };
+}
 
 export function StatsCard({ history, currency, square }: { history: Upload[]; currency: string; square: SquareStatus }) {
-  const now = new Date();
-  const month = history.filter((u) => {
-    const d = new Date(u.at);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  });
-  const monthName = now.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-  const status = !square.ok
-    ? { label: "Square not connected", dot: "bg-destructive" }
-    : square.mode === "sandbox"
-      ? { label: `Square sandbox${square.location ? ` · ${square.location}` : ""}`, dot: "bg-warning" }
-      : { label: `Square live${square.location ? ` · ${square.location}` : ""}`, dot: "bg-success" };
+  const month = history.filter((u) => inMonth(u));
+  const monthName = new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const status = connection(square);
 
-  const added = sum(month, (u) => u.created);
-  const skipped = sum(month, (u) => u.skipped.length);
-  const rowsOut = [
-    { k: "Already in Square", v: num(sum(month, (u) => u.exists)) },
+  const added = sumBy(month, (u) => u.created);
+  const skipped = sumBy(month, (u) => u.skipped.length);
+  const rows = [
+    { k: "Already in Square", v: num(sumBy(month, (u) => u.exists)) },
     { k: "Skipped", v: skipped ? `-${num(skipped)}` : "0", warn: skipped > 0 },
-    { k: "Stock value added", v: money(sum(month, (u) => u.value), currency) },
+    { k: "Stock value added", v: money(sumBy(month, (u) => u.value), currency) },
   ];
+  const allSkipped = sumBy(history, (u) => u.skipped.length);
 
   return (
     <Card className="flex h-full flex-col gap-0 rounded-xl py-0 shadow-none">
@@ -47,7 +43,7 @@ export function StatsCard({ history, currency, square }: { history: Upload[]; cu
         </div>
 
         <dl className="mt-4 rounded-xl bg-secondary/50 px-4 py-2.5 text-sm">
-          {rowsOut.map((r) => (
+          {rows.map((r) => (
             <div key={r.k} className="flex items-center justify-between gap-4 py-1">
               <dt className="text-muted-foreground">{r.k}</dt>
               <dd className={cn("font-medium tabular-nums", r.warn && "text-warning")}>{r.v}</dd>
@@ -57,16 +53,14 @@ export function StatsCard({ history, currency, square }: { history: Upload[]; cu
           <div className="flex items-center justify-between gap-4 py-1">
             <dt className="font-medium">Rows uploaded</dt>
             <dd className="font-medium tabular-nums">
-              {num(sum(month, (u) => u.total))}{" "}
-              <span className="font-normal text-muted-foreground">in {num(month.length)} {month.length === 1 ? "upload" : "uploads"}</span>
+              {num(sumBy(month, (u) => u.total))} <span className="font-normal text-muted-foreground">in {plural(month.length, "upload")}</span>
             </dd>
           </div>
         </dl>
 
         <p className="mt-auto pt-4 text-xs leading-relaxed text-muted-foreground">
-          All time: {num(sum(history, (u) => u.created))} items added across {num(history.length)} {history.length === 1 ? "upload" : "uploads"},{" "}
-          {money(sum(history, (u) => u.value), currency)} of stock
-          {sum(history, (u) => u.skipped.length) > 0 && `, ${num(sum(history, (u) => u.skipped.length))} rows skipped`}.
+          All time: {num(sumBy(history, (u) => u.created))} items added across {plural(history.length, "upload")},{" "}
+          {money(sumBy(history, (u) => u.value), currency)} of stock{allSkipped > 0 && `, ${num(allSkipped)} rows skipped`}.
         </p>
       </div>
     </Card>

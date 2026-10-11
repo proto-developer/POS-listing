@@ -1,3 +1,9 @@
+/**
+ * Reads a manifest spreadsheet (.xlsx / .xls / .csv) in the browser.
+ * Finds the columns we need by their header names (or by their values for
+ * unnamed columns) and turns each row into an Item. The sheet never leaves the browser.
+ */
+
 import * as XLSX from "xlsx";
 import type { Item } from "./types";
 
@@ -28,6 +34,20 @@ export type Manifest = {
   rows: SheetRow[];
 };
 
+export const COLUMN_LABEL: Record<ColumnKey, string> = {
+  name: "Item name",
+  sku: "SKU",
+  price: "Price",
+  brand: "Brand",
+  model: "Model",
+  category: "Category",
+  subcategory: "Type",
+  msrp: "RRP",
+  url: "URL",
+};
+
+export class ManifestError extends Error {}
+
 const num = (v: unknown): number | null => {
   if (v === null || v === undefined || v === "") return null;
   const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[^0-9.\-]/g, ""));
@@ -37,16 +57,22 @@ const num = (v: unknown): number | null => {
 const str = (v: unknown) => String(v ?? "").trim();
 const cell = (v: unknown): Cell => (v === null || v === undefined ? null : typeof v === "number" ? v : str(v));
 
+/** Throws ManifestError with a message fit for the user. */
 export async function readManifest(file: File): Promise<Manifest> {
-  const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null, blankrows: false });
-  if (!rows.length) return { header: [], columns: {}, rows: [] };
+  let rows: unknown[][];
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null, blankrows: false });
+  } catch {
+    throw new ManifestError("Couldn't read that file. Use .xlsx, .xls or .csv");
+  }
+  if (!rows.length) throw new ManifestError("No items found in that file");
 
-  const width = Math.max(...rows.map((r) => (r as unknown[]).length));
-  const rawHeader = Array.from({ length: width }, (_, c) => str((rows[0] as unknown[])[c]));
+  const width = Math.max(...rows.map((r) => r.length));
+  const rawHeader = Array.from({ length: width }, (_, c) => str(rows[0][c]));
   const header = rawHeader.map(norm);
-  const body = rows.slice(1) as unknown[][];
+  const body = rows.slice(1);
   const col: Partial<Record<ColumnKey, number>> = {};
 
   for (const [key, names] of Object.entries(ALIASES) as [ColumnKey, string[]][]) {
@@ -86,9 +112,6 @@ export async function readManifest(file: File): Promise<Manifest> {
     }
   });
 
+  if (!out.length) throw new ManifestError("No items found in that file");
   return { header: rawHeader, columns: col, rows: out };
-}
-
-export async function parseFile(file: File): Promise<Item[]> {
-  return (await readManifest(file)).rows.map((r) => r.item);
 }

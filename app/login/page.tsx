@@ -1,6 +1,6 @@
 import { Suspense } from "react";
-import { LoginForm } from "@/components/login-form";
-import { AUTH_SETUP_MESSAGE, authConfigured } from "@/lib/auth";
+import { LoginForm } from "@/components/auth/login-form";
+import { AUTH_SETUP_MESSAGE, authConfigured } from "@/server/auth/session";
 
 export const metadata = { title: "Sign in · Lister" };
 export const dynamic = "force-dynamic";

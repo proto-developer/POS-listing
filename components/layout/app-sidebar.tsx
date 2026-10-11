@@ -3,15 +3,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { IconBuildingStore, IconDashboard, IconHelp, IconInnerShadowTop, IconUpload } from "@tabler/icons-react";
-
-import { NavDocuments } from "@/components/nav-documents";
-import { NavMain } from "@/components/nav-main";
-import { NavSecondary } from "@/components/nav-secondary";
-import { NavUser } from "@/components/nav-user";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import type { Upload } from "@/lib/types";
+import { NavDocuments } from "./nav-documents";
+import { NavMain } from "./nav-main";
+import { NavSecondary } from "./nav-secondary";
+import { NavUser } from "./nav-user";
 
 export const NAV_MAIN = [
   { title: "Upload", url: "/", icon: IconUpload },
