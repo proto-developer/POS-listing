@@ -1,4 +1,16 @@
+# dependencies and build output
 node_modules
 .next
-.env.local
+out
+tsconfig.tsbuildinfo
+*.log
+
+# secrets: every env file except the committed example
+.env
+.env.*
+!.env.example
+
+# local data and tooling
 data
+.kilo
+.DS_Store

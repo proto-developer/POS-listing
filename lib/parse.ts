@@ -3,7 +3,7 @@ import type { Item } from "./types";
 
 const norm = (s: unknown) => String(s ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
-const ALIASES: Record<string, string[]> = {
+const ALIASES = {
   name: ["item description", "description", "item name", "name", "title", "product name"],
   brand: ["manufacturer", "brand", "make"],
   model: ["model number", "model", "model no", "mpn"],
@@ -13,6 +13,19 @@ const ALIASES: Record<string, string[]> = {
   price: ["price", "sale price", "selling price", "our price"],
   sku: ["sku", "item code", "lot", "lot number", "tag", "stock code"],
   url: ["url", "link", "product url"],
+} satisfies Record<string, string[]>;
+
+export type ColumnKey = keyof typeof ALIASES;
+export type Cell = string | number | null;
+
+/** One sheet row that will be posted: its raw cells plus the item we read from it. */
+export type SheetRow = { row: number; cells: Cell[]; item: Item };
+
+/** The uploaded sheet as the user sees it, plus which column we read each field from. */
+export type Manifest = {
+  header: string[];
+  columns: Partial<Record<ColumnKey, number>>;
+  rows: SheetRow[];
 };
 
 const num = (v: unknown): number | null => {
@@ -21,23 +34,27 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-export async function parseFile(file: File): Promise<Item[]> {
+const str = (v: unknown) => String(v ?? "").trim();
+const cell = (v: unknown): Cell => (v === null || v === undefined ? null : typeof v === "number" ? v : str(v));
+
+export async function readManifest(file: File): Promise<Manifest> {
   const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null, blankrows: false });
-  if (!rows.length) return [];
+  if (!rows.length) return { header: [], columns: {}, rows: [] };
 
-  const header = (rows[0] as unknown[]).map(norm);
+  const width = Math.max(...rows.map((r) => (r as unknown[]).length));
+  const rawHeader = Array.from({ length: width }, (_, c) => str((rows[0] as unknown[])[c]));
+  const header = rawHeader.map(norm);
   const body = rows.slice(1) as unknown[][];
-  const col: Record<string, number> = {};
+  const col: Partial<Record<ColumnKey, number>> = {};
 
-  for (const [key, names] of Object.entries(ALIASES)) {
+  for (const [key, names] of Object.entries(ALIASES) as [ColumnKey, string[]][]) {
     const i = names.map((n) => header.indexOf(n)).find((i) => i >= 0);
     if (i !== undefined) col[key] = i;
   }
 
   // Unnamed columns: detect SKU (e.g. A1369) and URL by their values
-  const width = Math.max(...rows.map((r) => (r as unknown[]).length));
   for (let c = 0; c < width; c++) {
     if (header[c] || Object.values(col).includes(c)) continue;
     const vals = body.map((r) => String(r[c] ?? "").trim()).filter(Boolean);
@@ -47,11 +64,11 @@ export async function parseFile(file: File): Promise<Item[]> {
     else if (col.sku === undefined && share(/^[A-Z]{1,4}-?\d{2,}$/i) > 0.6) col.sku = c;
   }
 
-  const get = (r: unknown[], k: string) => (col[k] === undefined ? null : r[col[k]]);
-  const str = (v: unknown) => String(v ?? "").trim();
+  const get = (r: unknown[], k: ColumnKey) => (col[k] === undefined ? null : r[col[k]!]);
 
-  return body
-    .map((r, i) => ({
+  const out: SheetRow[] = [];
+  body.forEach((r, i) => {
+    const item: Item = {
       row: i + 2,
       name: str(get(r, "name")),
       sku: str(get(r, "sku")),
@@ -62,7 +79,16 @@ export async function parseFile(file: File): Promise<Item[]> {
       subcategory: str(get(r, "subcategory")),
       msrp: num(get(r, "msrp")),
       url: str(get(r, "url")),
-    }))
+    };
     // drop totals / empty rows
-    .filter((it) => it.name || it.sku || it.brand || it.model);
+    if (item.name || item.sku || item.brand || item.model) {
+      out.push({ row: i + 2, cells: Array.from({ length: width }, (_, c) => cell(r[c])), item });
+    }
+  });
+
+  return { header: rawHeader, columns: col, rows: out };
+}
+
+export async function parseFile(file: File): Promise<Item[]> {
+  return (await readManifest(file)).rows.map((r) => r.item);
 }

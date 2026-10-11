@@ -44,6 +44,7 @@ export type Upload = {
   skipped: { row?: number; sku: string; name: string; reason: string }[];
   value: number; // sum of prices listed
   mode: string;
+  user?: string; // who ran the upload
 };
 
 /** Short, clean display name: "Frigidaire FDSH4501AS" instead of the full description */

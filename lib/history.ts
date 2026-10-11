@@ -1,21 +1,36 @@
 import "server-only";
-import { promises as fs } from "fs";
-import path from "path";
+import { COLLECTIONS, ensureIndexes, getDb } from "./db";
 import type { Upload } from "./types";
 
-const FILE = path.join(process.cwd(), "data", "history.json");
+// Upload history in MongoDB: the stats of every manifest pushed to Square (never the sheet itself).
 
+const LIMIT = 500;
+
+async function uploads() {
+  await ensureIndexes();
+  return (await getDb()).collection<Upload>(COLLECTIONS.uploads);
+}
+
+async function list(): Promise<Upload[]> {
+  return (await uploads()).find({}, { projection: { _id: 0 } }).sort({ at: -1 }).limit(LIMIT).toArray();
+}
+
+/** Newest first. If the database is unreachable the pages still render, empty, and the header shows the error. */
 export async function readHistory(): Promise<Upload[]> {
   try {
-    return JSON.parse(await fs.readFile(FILE, "utf8"));
-  } catch {
+    return await list();
+  } catch (e) {
+    console.error("[history] read failed:", e);
     return [];
   }
 }
 
-export async function addUpload(u: Upload) {
-  const list = [u, ...(await readHistory())].slice(0, 200);
-  await fs.mkdir(path.dirname(FILE), { recursive: true });
-  await fs.writeFile(FILE, JSON.stringify(list, null, 2));
-  return list;
+export async function addUpload(u: Upload): Promise<Upload[]> {
+  await (await uploads()).insertOne({ ...u });
+  return list();
+}
+
+export async function removeUpload(id: string): Promise<Upload[]> {
+  await (await uploads()).deleteOne({ id });
+  return list();
 }

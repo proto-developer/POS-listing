@@ -8,7 +8,10 @@ const BASE =
     : "https://connect.squareup.com";
 const SET_STOCK = (process.env.SQUARE_SET_STOCK ?? "true") !== "false";
 
-export const mode = TOKEN ? (process.env.SQUARE_ENV === "sandbox" ? "sandbox" : "live") : "demo";
+/** sandbox or live. There is no demo mode: without SQUARE_ACCESS_TOKEN nothing can be posted. */
+export const mode: "sandbox" | "live" = process.env.SQUARE_ENV === "sandbox" ? "sandbox" : "live";
+export const configured = !!TOKEN;
+const NOT_CONFIGURED = "SQUARE_ACCESS_TOKEN is not set in .env.local.";
 
 class SquareError extends Error {
   fields?: Field[];
@@ -46,17 +49,42 @@ async function sq<T = any>(path: string, init?: { method?: string; body?: unknow
 }
 
 // ---- cached account context ----
-let ctx: Promise<{ locationId: string; currency: string }> | null = null;
+let ctx: Promise<{ locationId: string; currency: string; name: string }> | null = null;
 function context() {
   ctx ??= (async () => {
     const id = process.env.SQUARE_LOCATION_ID?.trim() || "main";
     const { location } = await sq(`/v2/locations/${id}`);
-    return { locationId: location.id as string, currency: location.currency as string };
+    return { locationId: location.id as string, currency: location.currency as string, name: (location.name as string) || "" };
   })().catch((e) => {
     ctx = null;
     throw e;
   });
   return ctx;
+}
+
+export type SquareStatus = {
+  mode: typeof mode;
+  ok: boolean;
+  /** Location name, e.g. "Main Store" */
+  location?: string;
+  currency?: string;
+  error?: string;
+};
+
+/** Is the token valid and the location reachable? Cached for a minute. */
+let statusCache: { at: number; value: SquareStatus } | null = null;
+export async function status(): Promise<SquareStatus> {
+  if (!configured) return { mode, ok: false, error: NOT_CONFIGURED };
+  if (statusCache && Date.now() - statusCache.at < 60_000) return statusCache.value;
+  let value: SquareStatus;
+  try {
+    const { name, currency } = await context();
+    value = { mode, ok: true, location: name, currency };
+  } catch (e: any) {
+    value = { mode, ok: false, error: e?.message ?? "Cannot reach Square" };
+  }
+  statusCache = { at: Date.now(), value };
+  return value;
 }
 
 let categories: Map<string, string> | null = null;
@@ -87,7 +115,7 @@ const titleCase = (s: string) =>
   s.toLowerCase().replace(/(^|[\s/&-])([a-z])/g, (_, p, c) => p + c.toUpperCase());
 
 export async function currency(): Promise<string> {
-  if (mode === "demo") return "";
+  if (!configured) return "";
   try {
     return (await context()).currency;
   } catch {
@@ -96,10 +124,7 @@ export async function currency(): Promise<string> {
 }
 
 export async function pushItem(item: Item): Promise<PushResult> {
-  if (mode === "demo") {
-    await new Promise((r) => setTimeout(r, 180 + Math.random() * 320));
-    return { ok: true, status: "created" };
-  }
+  if (!configured) return { ok: false, error: NOT_CONFIGURED };
 
   try {
     const { locationId, currency } = await context();
